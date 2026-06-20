@@ -1,22 +1,19 @@
--- =============================================
--- СУПЕР‑ПРОСТОЙ СКРИПТ С ОТЛАДКОЙ
--- =============================================
+-- ===== НАСТРОЙКИ =====
+local GOAL_NAME = "Goals"   -- Имя статы голов (поменяй, если в выводе будет другое)
+local MONEY_NAME = "¥"      -- Имя статы денег (у тебя иена)
+local MIN_PLAYERS = 4       -- Минимальное число игроков для начисления
+local WAIT_AFTER = 3        -- Секунд ожидания после гола
+local TELEPORT_DELAY = 1    -- Пауза перед реконнектом
+
+-- ===== ОСНОВНОЙ КОД =====
 local player = game.Players.LocalPlayer
 local playersService = game.Players
 local teleportService = game:GetService("TeleportService")
 local placeId = game.PlaceId
 
--- Настройки
-local GOAL_NAME = "Goals"   -- Имя статы голов (поменяй, если ниже высветится другое)
-local MONEY_NAME = "¥"      -- Имя статы денег (у тебя символ йены)
-local MIN_PLAYERS = 4       -- Мин. игроков для начисления
-local WAIT_AFTER = 3        -- Секунд ожидания после гола
-local TELEPORT_DELAY = 1    -- Задержка перед реконнектом
-
--- Функция уведомления (и в консоль, и на экран)
 local function notify(msg)
     print(msg)
-    warn(msg)  -- в Delta warn видно в окне вывода
+    warn(msg)  -- в Delta видно в консоли
     pcall(function()
         game.StarterGui:SetCore("SendNotification", {
             Title = "Скрипт",
@@ -26,47 +23,46 @@ local function notify(msg)
     end)
 end
 
-notify("Скрипт запущен. Жду leaderstats...")
+notify("Скрипт запущен. Вывожу содержимое игрока...")
 
--- Ждём leaderstats (до 30 секунд)
-local leaderstats = nil
-for i = 1, 60 do
-    leaderstats = player:FindFirstChild("leaderstats")
-    if leaderstats then break end
-    task.wait(0.5)
+-- Выводим все, что есть внутри player на данный момент
+print("=== ДЕТИ ИГРОКА ===")
+for _, child in ipairs(player:GetChildren()) do
+    print(child.Name, child.ClassName)
 end
+print("===================")
 
+-- Бесконечно ждём появления leaderstats (используем событие ChildAdded)
+notify("Жду появления leaderstats (может занять время)...")
+local leaderstats = player:FindFirstChild("leaderstats")
 if not leaderstats then
-    notify("ОШИБКА: leaderstats не найдены за 30 сек")
-    return
+    leaderstats = player:WaitForChild("leaderstats", 999999)  -- ждать бесконечно
 end
 
--- Выводим список ВСЕХ статов
-notify("Найдены статы:")
+notify("leaderstats найдены! Статы:")
 local statList = ""
 for _, stat in ipairs(leaderstats:GetChildren()) do
     local line = stat.Name .. " = " .. tostring(stat.Value)
     print(line)
-    statList = statList .. line .. "\n"
     warn(line)
+    statList = statList .. line .. "\n"
 end
--- Покажем через уведомление первые 3 статы, чтобы точно было видно
-notify("Статы: " .. statList:sub(1, 100))
+notify("Статы: " .. statList:sub(1, 120))
 
--- Ищем нужные
-local goals = leaderstats:FindFirstChild(GOAL_NAME)
-local money = leaderstats:FindFirstChild(MONEY_NAME)
+-- Ищем нужные статы
+local goals = leaderstats:WaitForChild(GOAL_NAME, 10)
+local money = leaderstats:WaitForChild(MONEY_NAME, 10)
 
 if not goals then
-    notify("НЕ НАЙДЕНА стата '" .. GOAL_NAME .. "'. Проверь список выше и поменяй GOAL_NAME")
+    notify("Не найдена стата '" .. GOAL_NAME .. "'. Проверь список выше и поменяй GOAL_NAME")
     return
 end
 if not money then
-    notify("НЕ НАЙДЕНА стата '" .. MONEY_NAME .. "'. Проверь список выше и поменяй MONEY_NAME")
+    notify("Не найдена стата '" .. MONEY_NAME .. "'. Проверь список выше и поменяй MONEY_NAME")
     return
 end
 
-notify("Всё ок. Слежу за голами...")
+notify("Всё готово! Слежу за голами...")
 local lastGoals = goals.Value
 
 goals.Changed:Connect(function(newVal)
@@ -81,7 +77,6 @@ goals.Changed:Connect(function(newVal)
             local moneyBefore = money.Value
             task.wait(WAIT_AFTER)
             local moneyAfter = money.Value
-
             if moneyAfter == moneyBefore then
                 notify("Деньги не пришли! Перехожу на другой сервер...")
                 task.wait(TELEPORT_DELAY)
