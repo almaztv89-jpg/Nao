@@ -1,77 +1,80 @@
--- ===== НАСТРОЙКИ =====
-local GOAL_STAT_NAME = "Goals"   -- Подставь своё, если в leaderstats другое имя
-local MONEY_STAT_NAME = "¥"   -- Подставь своё
-local WAIT_AFTER_GOAL = 3        -- Секунд ожидания после гола
-local TELEPORT_DELAY = 1         -- Задержка перед телепортом
+-- =========================================
+-- НАСТРОЙКИ (поменяй после первого запуска, если нужно)
+-- =========================================
+local GOAL_STAT_NAME = "Goals"   -- Как называется счётчик голов?
+local MONEY_STAT_NAME = "¥"      -- Как называется валюта? (у тебя символ йены)
 
--- ===== СЛУЖЕБНАЯ ЧАСТЬ =====
+local WAIT_AFTER_GOAL = 3        -- Сколько секунд ждать после гола
+local TELEPORT_DELAY = 1         -- Пауза перед реконнектом
+
+-- =========================================
+-- СЛУЖЕБНАЯ ЧАСТЬ
+-- =========================================
 local player = game:GetService("Players").LocalPlayer
 local teleport = game:GetService("TeleportService")
 local placeId = game.PlaceId
 
--- Функция поиска статистики с задержкой
-local function waitForStat(parent, name)
-    local stat = parent:FindFirstChild(name)
-    local waited = 0
-    while not stat and waited < 15 do
+-- Функция поиска объекта с таймаутом
+local function findChild(parent, name)
+    local obj = parent:FindFirstChild(name)
+    local t = 0
+    while not obj and t < 20 do
         task.wait(0.5)
-        stat = parent:FindFirstChild(name)
-        waited = waited + 0.5
+        obj = parent:FindFirstChild(name)
+        t = t + 0.5
     end
-    return stat
+    return obj
 end
 
--- Главный цикл
-local function main()
-    -- Ждём leaderstats
-    local leaderstats = waitForStat(player, "leaderstats")
-    if not leaderstats then
-        warn("Не появились leaderstats за 15 секунд")
+-- Основная логика
+local function start()
+    -- Ждём появления leaderstats
+    local ls = findChild(player, "leaderstats")
+    if not ls then
+        warn("Не появились leaderstats за 10 секунд")
         return
     end
 
-    local goalStat = waitForStat(leaderstats, GOAL_STAT_NAME)
-    local moneyStat = waitForStat(leaderstats, MONEY_STAT_NAME)
+    -- ПЕРВЫЙ ЗАПУСК: выводим все доступные статистики, чтобы ты знал точные имена
+    print("========== ВСЕ СТАТЫ ==========")
+    for _, stat in ipairs(ls:GetChildren()) do
+        print(stat.Name .. " = " .. tostring(stat.Value))
+    end
+    print("================================")
 
-    -- Если не нашлись — выводим подсказку
-    if not goalStat or not moneyStat then
-        print("В leaderstats обнаружены:")
-        for _, v in ipairs(leaderstats:GetChildren()) do
-            print("  " .. v.Name .. " = " .. tostring(v.Value))
-        end
-        print("Замени GOAL_STAT_NAME и MONEY_STAT_NAME на нужные и перезапусти скрипт.")
+    -- Получаем нужные статистики по именам из настроек
+    local goals = findChild(ls, GOAL_STAT_NAME)
+    local money = findChild(ls, MONEY_STAT_NAME)
+
+    if not goals or not money then
+        warn("❌ Не найдены '" .. GOAL_STAT_NAME .. "' или '" .. MONEY_STAT_NAME .. "'")
+        print("Проверь список выше и поменяй GOAL_STAT_NAME / MONEY_STAT_NAME")
         return
     end
 
-    print("Скрипт запущен: слежу за голами...")
-    local lastGoals = goalStat.Value
+    print("✅ Слежу за голами (" .. goals.Name .. ") и деньгами (" .. money.Name .. ")")
+    local lastGoals = goals.Value
 
-    goalStat.Changed:Connect(function(newVal)
-        -- Игнорируем нечисловые изменения
-        if type(newVal) ~= "number" then return end
-
-        if newVal > lastGoals then
-            local moneyBefore = moneyStat.Value
-            print("Гол! Жду " .. WAIT_AFTER_GOAL .. " сек...")
+    -- Следим за изменением голов
+    goals.Changed:Connect(function(newValue)
+        if type(newValue) ~= "number" then return end
+        if newValue > lastGoals then
+            local moneyBefore = money.Value
+            print("⚽ Гол! Ждём " .. WAIT_AFTER_GOAL .. " сек...")
             task.wait(WAIT_AFTER_GOAL)
-            local moneyAfter = moneyStat.Value
+            local moneyAfter = money.Value
 
             if moneyAfter == moneyBefore then
-                print("Деньги не начислились! Переход на другой сервер...")
+                print("💸 ДЕНЬГИ НЕ ПРИШЛИ! Реконнект...")
                 task.wait(TELEPORT_DELAY)
-                -- Безопасный телепорт
-                local ok, err = pcall(teleport.Teleport, teleport, placeId)
-                if not ok then
-                    warn("Ошибка телепорта: " .. tostring(err))
-                end
+                pcall(teleport.Teleport, teleport, placeId)
             else
-                print("Деньги получены: +" .. (moneyAfter - moneyBefore))
+                print("✅ Деньги пришли: +" .. (moneyAfter - moneyBefore) .. " " .. money.Name)
+                -- Цикл продолжается сам, скрипт снова ждёт следующий гол
             end
         end
-
-        lastGoals = newVal
+        lastGoals = newValue
     end)
 end
 
--- Запуск
-main()
+start()
