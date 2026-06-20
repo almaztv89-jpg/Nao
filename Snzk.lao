@@ -1,85 +1,95 @@
--- =========================================
--- НАСТРОЙКИ (измени при необходимости)
--- =========================================
-local GOAL_STAT_NAME = "Goals"   -- название статы голов
-local MONEY_STAT_NAME = "¥"      -- название статы денег (у тебя йена)
-local MIN_PLAYERS = 4            -- минимальное кол-во игроков для начисления
-local WAIT_AFTER_GOAL = 3        -- секунд ожидания после гола
-local TELEPORT_DELAY = 1         -- пауза перед телепортом
-
--- =========================================
--- СЛУЖЕБНАЯ ЧАСТЬ
--- =========================================
-local player = game:GetService("Players").LocalPlayer
-local playersService = game:GetService("Players")
+-- =============================================
+-- СУПЕР‑ПРОСТОЙ СКРИПТ С ОТЛАДКОЙ
+-- =============================================
+local player = game.Players.LocalPlayer
+local playersService = game.Players
 local teleportService = game:GetService("TeleportService")
 local placeId = game.PlaceId
 
--- Функция поиска дочернего объекта с таймаутом
-local function findChild(parent, name)
-    local obj = parent:FindFirstChild(name)
-    local waited = 0
-    while not obj and waited < 20 do
-        task.wait(0.5)
-        obj = parent:FindFirstChild(name)
-        waited = waited + 0.5
-    end
-    return obj
-end
+-- Настройки
+local GOAL_NAME = "Goals"   -- Имя статы голов (поменяй, если ниже высветится другое)
+local MONEY_NAME = "¥"      -- Имя статы денег (у тебя символ йены)
+local MIN_PLAYERS = 4       -- Мин. игроков для начисления
+local WAIT_AFTER = 3        -- Секунд ожидания после гола
+local TELEPORT_DELAY = 1    -- Задержка перед реконнектом
 
--- Главная функция
-local function start()
-    -- Ждём leaderstats
-    local ls = findChild(player, "leaderstats")
-    if not ls then
-        warn("❌ leaderstats не появились за 10 сек")
-        return
-    end
-
-    -- Выводим все статы (для проверки названий)
-    print("========== ВСЕ СТАТЫ ==========")
-    for _, stat in ipairs(ls:GetChildren()) do
-        print(stat.Name .. " = " .. tostring(stat.Value))
-    end
-    print("================================")
-
-    local goals = findChild(ls, GOAL_STAT_NAME)
-    local money = findChild(ls, MONEY_STAT_NAME)
-
-    if not goals or not money then
-        warn("❌ Не найдены '" .. GOAL_STAT_NAME .. "' или '" .. MONEY_STAT_NAME .. "'")
-        print("Посмотри список выше и поправь настройки.")
-        return
-    end
-
-    print("✅ Запущен контроль: " .. goals.Name .. " / " .. money.Name)
-    local lastGoals = goals.Value
-
-    goals.Changed:Connect(function(newValue)
-        if type(newValue) ~= "number" then return end
-        if newValue > lastGoals then
-            local playerCount = #playersService:GetPlayers()
-            print("⚽ Гол! Игроков на сервере: " .. playerCount)
-
-            if playerCount < MIN_PLAYERS then
-                print("⚠️ Игроков меньше " .. MIN_PLAYERS .. ", деньги не начисляются – пропускаем проверку.")
-            else
-                local moneyBefore = money.Value
-                print("Ждём " .. WAIT_AFTER_GOAL .. " сек...")
-                task.wait(WAIT_AFTER_GOAL)
-                local moneyAfter = money.Value
-
-                if moneyAfter == moneyBefore then
-                    print("💸 Деньги не пришли! Переход на другой сервер...")
-                    task.wait(TELEPORT_DELAY)
-                    pcall(teleportService.Teleport, teleportService, placeId)
-                else
-                    print("✅ Деньги получены: +" .. (moneyAfter - moneyBefore) .. " " .. money.Name)
-                end
-            end
-        end
-        lastGoals = newValue
+-- Функция уведомления (и в консоль, и на экран)
+local function notify(msg)
+    print(msg)
+    warn(msg)  -- в Delta warn видно в окне вывода
+    pcall(function()
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Скрипт",
+            Text = msg,
+            Duration = 5
+        })
     end)
 end
 
-start()
+notify("Скрипт запущен. Жду leaderstats...")
+
+-- Ждём leaderstats (до 30 секунд)
+local leaderstats = nil
+for i = 1, 60 do
+    leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then break end
+    task.wait(0.5)
+end
+
+if not leaderstats then
+    notify("ОШИБКА: leaderstats не найдены за 30 сек")
+    return
+end
+
+-- Выводим список ВСЕХ статов
+notify("Найдены статы:")
+local statList = ""
+for _, stat in ipairs(leaderstats:GetChildren()) do
+    local line = stat.Name .. " = " .. tostring(stat.Value)
+    print(line)
+    statList = statList .. line .. "\n"
+    warn(line)
+end
+-- Покажем через уведомление первые 3 статы, чтобы точно было видно
+notify("Статы: " .. statList:sub(1, 100))
+
+-- Ищем нужные
+local goals = leaderstats:FindFirstChild(GOAL_NAME)
+local money = leaderstats:FindFirstChild(MONEY_NAME)
+
+if not goals then
+    notify("НЕ НАЙДЕНА стата '" .. GOAL_NAME .. "'. Проверь список выше и поменяй GOAL_NAME")
+    return
+end
+if not money then
+    notify("НЕ НАЙДЕНА стата '" .. MONEY_NAME .. "'. Проверь список выше и поменяй MONEY_NAME")
+    return
+end
+
+notify("Всё ок. Слежу за голами...")
+local lastGoals = goals.Value
+
+goals.Changed:Connect(function(newVal)
+    if type(newVal) ~= "number" then return end
+    if newVal > lastGoals then
+        local playerCount = #playersService:GetPlayers()
+        notify("Гол! Игроков: " .. playerCount)
+
+        if playerCount < MIN_PLAYERS then
+            notify("Мало игроков (<" .. MIN_PLAYERS .. "), проверку денег пропускаю")
+        else
+            local moneyBefore = money.Value
+            task.wait(WAIT_AFTER)
+            local moneyAfter = money.Value
+
+            if moneyAfter == moneyBefore then
+                notify("Деньги не пришли! Перехожу на другой сервер...")
+                task.wait(TELEPORT_DELAY)
+                pcall(teleportService.Teleport, teleportService, placeId)
+            else
+                notify("Деньги пришли: +" .. (moneyAfter - moneyBefore) .. " " .. money.Name)
+            end
+        end
+    end
+    lastGoals = newVal
+end)
